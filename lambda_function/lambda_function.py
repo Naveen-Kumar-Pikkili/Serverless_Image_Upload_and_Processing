@@ -1,75 +1,88 @@
 import boto3
 import os
 import io
-import base64
-import cgi
 from PIL import Image
+import base64
 
 s3 = boto3.client('s3')
-BUCKET_NAME = os.environ['BUCKET_NAME']
+BUCKET_NAME = 'naveen-uploaded-images'  # change to your bucket
 
-ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png']
-RESIZE_WIDTH = 300
-RESIZE_HEIGHT = 300
+ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png'}
 
 def lambda_handler(event, context):
     try:
-        # Get content type and decode body
-        content_type = event['headers'].get('Content-Type') or event['headers'].get('content-type')
-        body = event['body']
-        if event.get('isBase64Encoded'):
-            body = io.BytesIO(base64.b64decode(body))
-        else:
-            body = io.BytesIO(body.encode())
+        # Get the file from API Gateway event (multipart/form-data base64)
+        content_type = event['headers'].get('content-type') or event['headers'].get('Content-Type')
+        if not content_type or 'multipart/form-data' not in content_type:
+            return respond(400, 'Invalid content-type. Must be multipart/form-data.')
 
-        environ = {'REQUEST_METHOD': 'POST'}
-        headers = {'content-type': content_type}
-        form = cgi.FieldStorage(fp=body, environ=environ, headers=headers)
+        # Decode the body
+        body = base64.b64decode(event['body'])
+        
+        # Parse multipart form-data manually (simple parse for one file)
+        file_bytes, filename = parse_multipart(body, content_type)
+        if not filename:
+            return respond(400, 'No file found in request.')
 
-        # Get uploaded image
-        image_file = form['file']
-        filename = image_file.filename
-        file_ext = filename.split('.')[-1].lower()
+        ext = filename.rsplit('.', 1)[-1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            return respond(400, f'File extension {ext} not allowed.')
 
-        # ❌ Check allowed extensions
-        if file_ext not in ALLOWED_EXTENSIONS:
-            return {
-                'statusCode': 400,
-                'body': f"Invalid file type: .{file_ext}. Only JPG, JPEG, and PNG are allowed."
-            }
+        # Open image with Pillow
+        image = Image.open(io.BytesIO(file_bytes))
 
-        # Read and process image
-        image_data = image_file.file.read()
-        image = Image.open(io.BytesIO(image_data))
+        # Convert to black and white
+        bw_image = image.convert('L')
 
-        # ✅ Resize
-        image = image.resize((RESIZE_WIDTH, RESIZE_HEIGHT))
+        # Resize image (example: max width or height 500px)
+        bw_image.thumbnail((500, 500))
 
-        # ✅ Convert to black & white (1-bit)
-        image = image.convert('1')  # '1' = binary (black and white)
-
-        # Save processed image to buffer
-        buffer = io.BytesIO()
-        image.save(buffer, format='PNG')
-        buffer.seek(0)
-
-        output_filename = f"processed-{filename.rsplit('.', 1)[0]}.png"
+        # Save to bytes
+        output_buffer = io.BytesIO()
+        bw_image.save(output_buffer, format='PNG')
+        output_buffer.seek(0)
 
         # Upload to S3
-        s3.put_object(
-            Bucket=BUCKET_NAME,
-            Key=output_filename,
-            Body=buffer,
-            ContentType='image/png'
-        )
+        s3_key = f"processed/{filename.rsplit('.',1)[0]}_bw.png"
+        s3.put_object(Bucket=BUCKET_NAME, Key=s3_key, Body=output_buffer, ContentType='image/png')
 
-        return {
-            'statusCode': 200,
-            'body': f"Image processed and uploaded as {output_filename}"
-        }
+        return respond(200, f"Image processed and uploaded to s3://{BUCKET_NAME}/{s3_key}")
 
     except Exception as e:
-        return {
-            'statusCode': 500,
-            'body': f"Error: {str(e)}"
-        }
+        return respond(500, f"Error: {str(e)}")
+
+
+def respond(status_code, message):
+    return {
+        'statusCode': status_code,
+        'body': message,
+        'headers': {'Content-Type': 'text/plain'}
+    }
+
+
+def parse_multipart(body_bytes, content_type):
+    """
+    Simple parser for multipart/form-data, extracting file bytes and filename.
+    Assumes only one file in form.
+    """
+    import re
+
+    boundary = re.findall('boundary=([^;]+)', content_type)[0]
+    boundary_bytes = boundary.encode()
+
+    parts = body_bytes.split(b'--' + boundary_bytes)
+    for part in parts:
+        if b'Content-Disposition' in part and b'filename=' in part:
+            # Extract filename
+            filename_match = re.search(b'filename="([^"]+)"', part)
+            if not filename_match:
+                continue
+            filename = filename_match.group(1).decode()
+
+            # Extract file content
+            file_start = part.find(b'\r\n\r\n') + 4
+            file_end = part.rfind(b'\r\n')
+            file_bytes = part[file_start:file_end]
+
+            return file_bytes, filename
+    return None, None
