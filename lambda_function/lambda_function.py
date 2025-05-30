@@ -2,11 +2,13 @@ import json
 import base64
 import re
 import io
-from PIL import Image
+from PIL import Image, ImageOps
 import boto3
 
+# S3 clients and bucket names
 s3 = boto3.client('s3')
-BUCKET_NAME = 'naveen-original-uploaded-images'  # Replace with your actual bucket name
+SOURCE_BUCKET_NAME = 'naveen-original-uploaded-images'      # Original bucket
+PROCESSED_BUCKET_NAME = 'naveen-processed-images'           # Bucket for processed images
 
 def respond(status_code, message):
     return {
@@ -49,6 +51,21 @@ def parse_multipart(body_bytes, content_type):
 
     return None, None
 
+def resize_image(image, max_size=800):
+    # Resize image maintaining aspect ratio so that max dimension is max_size
+    width, height = image.size
+    if max(width, height) <= max_size:
+        return image
+
+    if width > height:
+        new_width = max_size
+        new_height = int((max_size / width) * height)
+    else:
+        new_height = max_size
+        new_width = int((max_size / height) * width)
+
+    return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
 def lambda_handler(event, context):
     try:
         is_base64_encoded = event.get('isBase64Encoded', False)
@@ -63,10 +80,31 @@ def lambda_handler(event, context):
         if not file_bytes or not filename:
             return respond(400, "No image file found or file is invalid")
 
-        # Upload to S3
-        s3.put_object(Bucket=BUCKET_NAME, Key=filename, Body=file_bytes, ContentType='image/jpeg')
+        # Upload original image to SOURCE_BUCKET_NAME
+        s3.put_object(Bucket=SOURCE_BUCKET_NAME, Key=filename, Body=file_bytes, ContentType='image/jpeg')
 
-        return respond(200, f"Successfully uploaded {filename} to S3 bucket {BUCKET_NAME}")
+        # Open image from bytes
+        image = Image.open(io.BytesIO(file_bytes))
+
+        # Convert to grayscale (black and white)
+        bw_image = ImageOps.grayscale(image)
+
+        # *** Removed rotation here ***
+
+        # Resize image to max 800 pixels width/height
+        resized_image = resize_image(bw_image, max_size=800)
+
+        # Save processed image to bytes buffer
+        buffer = io.BytesIO()
+        # Save as JPEG regardless of original format for consistency
+        resized_image.save(buffer, format='JPEG')
+        buffer.seek(0)
+        processed_bytes = buffer.read()
+
+        # Upload processed image to the processed bucket
+        s3.put_object(Bucket=PROCESSED_BUCKET_NAME, Key=filename, Body=processed_bytes, ContentType='image/jpeg')
+
+        return respond(200, f"Successfully uploaded original and processed image '{filename}' to S3 buckets")
 
     except Exception as e:
         print("Error occurred:", str(e))
