@@ -3,17 +3,17 @@ pipeline {
 
     environment {
         AWS_REGION = 'us-east-1'
-        LAMBDA_FUNCTION_NAME = 'Image-Upload'
+        LAMBDA_FUNCTION_NAME = 'ImageProcessingLambda_vpikkili'
         CF_STACK_NAME = 'ImageUploadStack'
-        CF_TEMPLATE_FILE = 'cloudformation.yaml'
-        FRONTEND_DIR = 'frontend'
-        LAMBDA_DIR = 'backend'
+        CF_TEMPLATE_FILE = 'cloudformation.yaml'      // in root
+        LAMBDA_DIR = 'backend'                        // backend folder
     }
 
     stages {
-        stage('Checkout') {
+
+        stage('Clone GitHub Repository') {
             steps {
-                checkout scm
+                git branch: 'main', url: 'https://github.com/Naveen-Kumar-Pikkili/Serverless_Image_Upload_and_Processing.git'
             }
         }
 
@@ -21,11 +21,18 @@ pipeline {
             steps {
                 dir("${env.LAMBDA_DIR}") {
                     sh '''
-                        rm -rf package lambda-function.zip
-                        pip install -r requirements.txt -t package/
-                        cp lambda_function.py package/
-                        cd package
-                        zip -r ../lambda-function.zip .
+                        docker run --rm \
+                            -v "$(pwd)":/var/task \
+                            -w /var/task python:3.9 /bin/bash -c "
+                                apt-get update && \
+                                apt-get install -y gcc libjpeg-dev zlib1g-dev zip jq && \
+                                rm -rf package lambda-function.zip && \
+                                mkdir -p package && \
+                                pip install Pillow==9.5.0 -t package/ && \
+                                cp lambda_function.py package/ && \
+                                cd package && \
+                                zip -r ../lambda-function.zip .
+                            "
                     '''
                 }
             }
@@ -33,55 +40,43 @@ pipeline {
 
         stage('Deploy Lambda Code') {
             steps {
-                sh """
-                    aws lambda update-function-code \
-                        --function-name ${env.LAMBDA_FUNCTION_NAME} \
-                        --zip-file fileb://${env.LAMBDA_DIR}/lambda-function.zip \
-                        --region ${env.AWS_REGION}
-                """
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-credentials'
+                ]]) {
+                    sh """
+                        aws lambda update-function-code \
+                            --function-name ${env.LAMBDA_FUNCTION_NAME} \
+                            --zip-file fileb://${env.LAMBDA_DIR}/lambda-function.zip \
+                            --region ${env.AWS_REGION}
+                    """
+                }
             }
         }
 
-        stage('Deploy CloudFormation Stack') {
+        stage('Deploy CloudFormation Stack (via Script)') {
             steps {
-                sh """
-                    if aws cloudformation describe-stacks --stack-name $CF_STACK_NAME --region $AWS_REGION; then
-                        aws cloudformation update-stack \
-                            --stack-name $CF_STACK_NAME \
-                            --template-body file://$CF_TEMPLATE_FILE \
-                            --capabilities CAPABILITY_NAMED_IAM \
-                            --region $AWS_REGION
-                        aws cloudformation wait stack-update-complete --stack-name $CF_STACK_NAME --region $AWS_REGION
-                    else
-                        aws cloudformation create-stack \
-                            --stack-name $CF_STACK_NAME \
-                            --template-body file://$CF_TEMPLATE_FILE \
-                            --capabilities CAPABILITY_NAMED_IAM \
-                            --region $AWS_REGION
-                        aws cloudformation wait stack-create-complete --stack-name $CF_STACK_NAME --region $AWS_REGION
-                    fi
-                """
-            }
-        }
-
-        stage('Deploy Frontend (Optional)') {
-            when {
-                expression { fileExists("${env.FRONTEND_DIR}/index.html") }
-            }
-            steps {
-                sh """
-                    aws s3 sync ${env.FRONTEND_DIR}/ s3://<your-frontend-s3-bucket>/ --delete
-                """
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-credentials'
+                ]]) {
+                    dir("${env.LAMBDA_DIR}") {
+                        sh '''
+                            chmod +x deploy-cloudformation.sh
+                            ./deploy-cloudformation.sh
+                        '''
+                    }
+                }
             }
         }
     }
 
     post {
         success {
-            echo '✅ Deployment complete!'
+            echo '✅ Lambda & CloudFormation deployment complete!'
         }
         failure {
-            echo '❌ Deployment failed. Check the console logs.'
+            echo '❌ Deployment failed. Check Jenkins logs for errors.'
         }
     }
 }
