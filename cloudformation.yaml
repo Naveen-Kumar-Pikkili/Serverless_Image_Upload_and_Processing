@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Image Upload and Processing Pipeline without SNS
+
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Default: ImageProcessingLambda
+
+Resources:
+
+  ### S3 Buckets ###
+  OriginalImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: naveen-original-uploaded-images
+
+  ProcessedImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: naveen-processed-images
+
+  ### IAM Role for Lambda ###
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lambda-image-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: lambda-s3-logs-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - arn:aws:s3:::naveen-original-uploaded-images/*
+                  - arn:aws:s3:::naveen-processed-images/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: arn:aws:logs:*:*:*
+
+  ### Lambda Function ###
+  ImageProcessingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.11
+      Timeout: 30
+      MemorySize: 512
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              raise Exception("Simulated Error")  # Change/remove this for real use
+              return {
+                  "statusCode": 200,
+                  "body": "Lambda executed"
+              }
+
+  ### API Gateway ###
+  LambdaAPIGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: ImageUploadAPI
+
+  LambdaResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt: [LambdaAPIGateway, RootResourceId]
+      PathPart: upload
+      RestApiId: !Ref LambdaAPIGateway
+
+  LambdaMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref LambdaAPIGateway
+      ResourceId: !Ref LambdaResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ImageProcessingLambda.Arn}/invocations
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ImageProcessingLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaAPIGateway}/*/POST/upload
+
+  ### CloudWatch Log Group ###
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LambdaFunctionName}
+      RetentionInDays: 7
+
+  ### CloudWatch Metric Filter for Errors ###
+  LambdaErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LambdaLogGroup
+      FilterPattern: '"ERROR"'
+      MetricTransformations:
+        - MetricName: LambdaErrorCount
+          MetricNamespace: LambdaMonitoring
+          MetricValue: "1"
+
+  ### CloudWatch Alarm ###
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: LambdaErrorAlarm
+      AlarmDescription: Alarm when Lambda logs contain errors
+      MetricName: LambdaErrorCount
+      Namespace: LambdaMonitoring
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+Outputs:
+  APIGatewayInvokeURL:
+    Value: !Sub https://${LambdaAPIGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/upload
+    Description: API Gateway Invoke URL
