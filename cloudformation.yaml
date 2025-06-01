@@ -45,7 +45,7 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-  # Lambda Function
+  # Lambda Function (Placeholder code)
   ImageProcessingLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -64,7 +64,7 @@ Resources:
           SOURCE_BUCKET_NAME: naveen-original-uploaded-images-vpikkili
           PROCESSED_BUCKET_NAME: naveen-processed-images-vpikkili
 
-  # API Gateway
+  # API Gateway Rest API
   ImageApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -75,6 +75,7 @@ Resources:
         - image/jpg
         - multipart/form-data
 
+  # API Resources: /v1/upload
   ApiVersionResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -89,6 +90,7 @@ Resources:
       ParentId: !Ref ApiVersionResource
       PathPart: upload
 
+  # POST Method with binary content handling
   PostMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -101,6 +103,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ImageProcessingLambda.Arn}/invocations
+        ContentHandling: CONVERT_TO_BINARY
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
@@ -108,6 +111,7 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
 
+  # OPTIONS Method for CORS preflight
   OptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -132,6 +136,7 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
+  # Deployment & Stage
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -148,6 +153,7 @@ Resources:
       RestApiId: !Ref ImageApi
       DeploymentId: !Ref ApiDeployment
 
+  # Lambda permission for API Gateway to invoke the Lambda
   LambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
