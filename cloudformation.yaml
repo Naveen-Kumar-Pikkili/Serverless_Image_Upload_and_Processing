@@ -64,8 +64,8 @@ Resources:
           SOURCE_BUCKET_NAME: naveen-original-uploaded-images-vpikkili
           PROCESSED_BUCKET_NAME: naveen-processed-images-vpikkili
 
-  # API Gateway — Renamed to force creation
-  ImageApiV2:
+  # API Gateway
+  ImageApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: ImageProcessingAPI
@@ -77,21 +77,21 @@ Resources:
   ApiVersionResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      RestApiId: !Ref ImageApiV2
-      ParentId: !GetAtt ImageApiV2.RootResourceId
+      RestApiId: !Ref ImageApi
+      ParentId: !GetAtt ImageApi.RootResourceId
       PathPart: v1
 
   ApiResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      RestApiId: !Ref ImageApiV2
+      RestApiId: !Ref ImageApi
       ParentId: !Ref ApiVersionResource
       PathPart: upload
 
   PostMethod:
     Type: AWS::ApiGateway::Method
     Properties:
-      RestApiId: !Ref ImageApiV2
+      RestApiId: !Ref ImageApi
       ResourceId: !Ref ApiResource
       HttpMethod: POST
       AuthorizationType: NONE
@@ -110,7 +110,7 @@ Resources:
   OptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
-      RestApiId: !Ref ImageApiV2
+      RestApiId: !Ref ImageApi
       ResourceId: !Ref ApiResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
@@ -137,7 +137,7 @@ Resources:
       - PostMethod
       - OptionsMethod
     Properties:
-      RestApiId: !Ref ImageApiV2
+      RestApiId: !Ref ImageApi
       StageName: prod
 
   LambdaPermission:
@@ -146,16 +146,17 @@ Resources:
       FunctionName: !Ref ImageProcessingLambda
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageApiV2}/*/POST/v1/upload
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageApi}/*/POST/v1/upload
 
   # API Key and Usage Plan
   ApiKey:
     Type: AWS::ApiGateway::ApiKey
+    DependsOn: ApiDeployment  # <== Important fix
     Properties:
       Name: ImageUploadApiKey
       Enabled: true
       StageKeys:
-        - RestApiId: !Ref ImageApiV2
+        - RestApiId: !Ref ImageApi
           StageName: prod
 
   UsagePlan:
@@ -163,7 +164,7 @@ Resources:
     Properties:
       UsagePlanName: ImageProcessingUsagePlan
       ApiStages:
-        - ApiId: !Ref ImageApiV2
+        - ApiId: !Ref ImageApi
           Stage: prod
       Throttle:
         RateLimit: 10
@@ -174,6 +175,9 @@ Resources:
 
   UsagePlanKey:
     Type: AWS::ApiGateway::UsagePlanKey
+    DependsOn:
+      - ApiKey
+      - UsagePlan
     Properties:
       KeyId: !Ref ApiKey
       KeyType: API_KEY
@@ -182,7 +186,7 @@ Resources:
 Outputs:
   APIInvokeURL:
     Description: "POST image to this endpoint"
-    Value: !Sub "https://${ImageApiV2}.execute-api.${AWS::Region}.amazonaws.com/prod/v1/upload"
+    Value: !Sub "https://${ImageApi}.execute-api.${AWS::Region}.amazonaws.com/prod/v1/upload"
 
   ApiKeyValue:
     Description: "Your API Key for client-side calls"
