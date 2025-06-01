@@ -89,7 +89,7 @@ Resources:
       ParentId: !Ref ApiVersionResource
       PathPart: upload
 
-  # POST Method
+  # POST Method with CORS headers in integration response
   PostMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -103,6 +103,14 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ImageProcessingLambda.Arn}/invocations
         ContentHandling: CONVERT_TO_BINARY
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+            ResponseTemplates:
+              application/json: ''
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
@@ -110,7 +118,7 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
 
-  # OPTIONS Method for CORS
+  # OPTIONS Method for CORS preflight
   OptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -152,7 +160,7 @@ Resources:
       RestApiId: !Ref ImageApi
       DeploymentId: !Ref ApiDeployment
 
-  # Lambda Permission (✅ FIXED)
+  # Lambda Permission
   LambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
