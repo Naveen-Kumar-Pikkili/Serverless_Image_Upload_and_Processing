@@ -55,7 +55,6 @@ Resources:
       Runtime: python3.9
       Timeout: 30
       MemorySize: 512
-      # Placeholder inline code to allow stack creation
       Code:
         ZipFile: |
           def lambda_handler(event, context):
@@ -120,8 +119,7 @@ Resources:
               method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
               method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
               method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ""
+            # Removed ResponseTemplates here to prevent drift
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
