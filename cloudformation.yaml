@@ -3,7 +3,7 @@ Description: Secure Image Processing App with S3, Lambda, API Gateway, CORS, Ver
 
 Resources:
 
-  # Buckets
+  # S3 Buckets
   OriginalImagesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -14,7 +14,7 @@ Resources:
     Properties:
       BucketName: naveen-processed-images-vpikkili
 
-  # Lambda Role
+  # IAM Role for Lambda
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -27,7 +27,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: S3AccessAndLogging
+        - PolicyName: S3AndLoggingAccess
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -45,7 +45,7 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-  # Lambda Function
+  # Lambda Function with Logging and CORS
   ImageProcessingLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -57,8 +57,23 @@ Resources:
       MemorySize: 512
       Code:
         ZipFile: |
+          import logging
+          import json
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
           def lambda_handler(event, context):
-              return {"statusCode": 200, "body": "Placeholder Lambda deployed via pipeline"}
+              logger.info("Received event: %s", json.dumps(event))
+              return {
+                  "statusCode": 200,
+                  "headers": {
+                      "Access-Control-Allow-Origin": "*",
+                      "Access-Control-Allow-Methods": "POST,OPTIONS",
+                      "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                  },
+                  "body": json.dumps({"message": "Placeholder Lambda deployed via pipeline"})
+              }
       Environment:
         Variables:
           SOURCE_BUCKET_NAME: naveen-original-uploaded-images-vpikkili
@@ -131,6 +146,7 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
+  # Deployment
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -140,6 +156,7 @@ Resources:
       RestApiId: !Ref ImageApi
       StageName: prod
 
+  # Allow API Gateway to Invoke Lambda
   LambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
