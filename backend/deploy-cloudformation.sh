@@ -19,7 +19,7 @@ if [ "$STACK_STATUS" == "ROLLBACK_COMPLETE" ]; then
     echo "⏳ Waiting for stack deletion to complete..."
     aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --region "$REGION"
     echo "✅ Stack deleted. Creating new stack..."
-    
+
     aws cloudformation create-stack \
         --stack-name "$STACK_NAME" \
         --template-body "file://$TEMPLATE_FILE" \
@@ -51,12 +51,13 @@ UPDATE_OUTPUT=$(aws cloudformation update-stack \
     --stack-name "$STACK_NAME" \
     --template-body "file://$TEMPLATE_FILE" \
     --capabilities CAPABILITY_NAMED_IAM \
-    --region "$REGION" 2>&1)
+    --region "$REGION" 2>&1) || true
 
 if echo "$UPDATE_OUTPUT" | grep -q "No updates are to be performed"; then
     echo "⚠️ No updates to perform."
-else
-    echo "⏳ Waiting for stack update to complete..."
-    aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME" --region "$REGION" && \
-    echo "✅ Stack updated successfully!"
+    exit 0
 fi
+
+echo "⏳ Waiting for stack update to complete..."
+aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME" --region "$REGION"
+echo "✅ Stack updated successfully!"
