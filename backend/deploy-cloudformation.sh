@@ -1,34 +1,48 @@
 #!/bin/bash
+set -euo pipefail
 
-STACK_NAME=$1
-TEMPLATE_FILE=$2
-REGION=$3
-S3_BUCKET=$4
-S3_KEY=$5
+STACK_NAME="ImageUploadStack"
+TEMPLATE_FILE="../cloudformation.yaml"
+AWS_REGION="us-east-1"
 
 echo "Deploying CloudFormation stack: $STACK_NAME"
 echo "Using template file: $TEMPLATE_FILE"
-echo "AWS Region: $REGION"
+echo "AWS Region: $AWS_REGION"
 
-# Check if stack exists
-if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" >/dev/null 2>&1; then
-    echo "✅ Stack exists. Attempting to update it..."
-    aws cloudformation update-stack \
-        --stack-name "$STACK_NAME" \
-        --template-body "file://$TEMPLATE_FILE" \
-        --parameters ParameterKey=LambdaS3Bucket,ParameterValue="$S3_BUCKET" ParameterKey=LambdaS3Key,ParameterValue="$S3_KEY" \
-        --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-        --region "$REGION"
-
-    aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME" --region "$REGION" && echo "✅ Stack update complete." || echo "❌ Stack update failed."
-else
-    echo "Stack does not exist. Creating new stack..."
+if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+    echo "❌ Stack does not exist. Creating stack..."
     aws cloudformation create-stack \
         --stack-name "$STACK_NAME" \
-        --template-body "file://$TEMPLATE_FILE" \
-        --parameters ParameterKey=LambdaS3Bucket,ParameterValue="$S3_BUCKET" ParameterKey=LambdaS3Key,ParameterValue="$S3_KEY" \
-        --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-        --region "$REGION"
+        --template-body file://"$TEMPLATE_FILE" \
+        --capabilities CAPABILITY_NAMED_IAM \
+        --region "$AWS_REGION"
 
-    aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --region "$REGION" && echo "✅ Stack creation complete." || echo "❌ Stack creation failed."
+    echo "Waiting for stack creation to complete..."
+    aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --region "$AWS_REGION"
+    echo "✅ Stack created successfully."
+else
+    echo "✅ Stack exists. Attempting to update it..."
+    set +e
+    UPDATE_OUTPUT=$(aws cloudformation update-stack \
+        --stack-name "$STACK_NAME" \
+        --template-body file://"$TEMPLATE_FILE" \
+        --capabilities CAPABILITY_NAMED_IAM \
+        --region "$AWS_REGION" 2>&1)
+    UPDATE_EXIT_CODE=$?
+    set -e
+
+    if [[ $UPDATE_EXIT_CODE -ne 0 ]]; then
+        if echo "$UPDATE_OUTPUT" | grep -q 'No updates are to be performed'; then
+            echo "ℹ️ No updates to perform on the stack."
+            exit 0
+        else
+            echo "❌ Stack update failed:"
+            echo "$UPDATE_OUTPUT"
+            exit $UPDATE_EXIT_CODE
+        fi
+    fi
+
+    echo "Waiting for stack update to complete..."
+    aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME" --region "$AWS_REGION"
+    echo "✅ Stack updated successfully."
 fi
