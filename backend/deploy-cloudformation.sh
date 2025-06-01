@@ -3,12 +3,17 @@
 set -e
 
 STACK_NAME="ImageUploadStack"
-TEMPLATE_FILE="cloudformation.yaml"
+TEMPLATE_FILE="../cloudformation.yaml"  # Use relative path based on where script runs
 AWS_REGION="us-east-1"
 
 echo "Deploying CloudFormation stack: $STACK_NAME"
 echo "Using template file: $TEMPLATE_FILE"
 echo "AWS Region: $AWS_REGION"
+
+if [ ! -f "$TEMPLATE_FILE" ]; then
+    echo "❌ ERROR: CloudFormation template '$TEMPLATE_FILE' not found in $(pwd)"
+    exit 1
+fi
 
 # Check if stack exists
 if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" > /dev/null 2>&1; then
@@ -33,7 +38,6 @@ if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_
         echo "❌ Stack update failed."
         exit 1
     fi
-
 else
     echo "⚠️  Stack does not exist. Creating it..."
 
