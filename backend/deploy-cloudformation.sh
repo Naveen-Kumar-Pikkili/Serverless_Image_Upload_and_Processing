@@ -1,24 +1,28 @@
-echo "Stack exists. Checking for template changes..."
+#!/bin/bash
+set -e
 
-aws cloudformation get-template \
-    --stack-name "${STACK_NAME}" \
-    --region "${AWS_REGION}" \
-    --query 'TemplateBody' \
-    --output text > deployed-template.yaml
+STACK_NAME=${CF_STACK_NAME:-"ImageUploadStack"}
+TEMPLATE_FILE=${CF_TEMPLATE_FILE:-"cloudformation.yaml"}
+AWS_REGION=${AWS_REGION:-"us-east-1"}
 
-if diff ../${TEMPLATE_FILE} deployed-template.yaml > /dev/null; then
-    echo "No changes detected in CloudFormation template. Skipping update."
+echo "Deploying CloudFormation stack: $STACK_NAME"
+echo "Using template file: $TEMPLATE_FILE"
+echo "AWS Region: $AWS_REGION"
+
+# Deploy the stack
+DEPLOY_OUTPUT=$(aws cloudformation deploy \
+    --stack-name "$STACK_NAME" \
+    --template-file "$TEMPLATE_FILE" \
+    --region "$AWS_REGION" \
+    --capabilities CAPABILITY_NAMED_IAM 2>&1)
+
+echo "$DEPLOY_OUTPUT"
+
+# Check output for update or no change message
+if echo "$DEPLOY_OUTPUT" | grep -q "No updates are to be performed"; then
+    echo "✅ No changes detected - stack is up to date."
+elif echo "$DEPLOY_OUTPUT" | grep -q "Successfully created/updated stack"; then
+    echo "✅ Stack created or updated successfully."
 else
-    echo "Template changes detected. Updating CloudFormation stack..."
-    aws cloudformation update-stack \
-        --stack-name "${STACK_NAME}" \
-        --template-body file://../${TEMPLATE_FILE} \
-        --capabilities CAPABILITY_NAMED_IAM \
-        --region "${AWS_REGION}"
-
-    aws cloudformation wait stack-update-complete \
-        --stack-name "${STACK_NAME}" \
-        --region "${AWS_REGION}"
+    echo "⚠️ Deployment output did not match expected patterns."
 fi
-
-rm deployed-template.yaml
