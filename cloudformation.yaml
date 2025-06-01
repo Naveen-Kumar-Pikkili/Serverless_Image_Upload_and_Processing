@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Image Processing App with S3, Lambda, API Gateway, CORS, and Binary Media Types
+Description: Secure Image Processing App with S3, Lambda, API Gateway, CORS, Versioning, Throttling, and API Key
 
 Resources:
 
@@ -14,7 +14,7 @@ Resources:
     Properties:
       BucketName: naveen-processed-images-vpikkili
 
-  # Lambda Execution Role
+  # Lambda Role
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -59,13 +59,12 @@ Resources:
         ZipFile: |
           def lambda_handler(event, context):
               return {"statusCode": 200, "body": "Placeholder Lambda deployed via pipeline"}
-
       Environment:
         Variables:
           SOURCE_BUCKET_NAME: naveen-original-uploaded-images-vpikkili
           PROCESSED_BUCKET_NAME: naveen-processed-images-vpikkili
 
-  # REST API Gateway
+  # API Gateway
   ImageApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -75,14 +74,20 @@ Resources:
         - image/png
         - image/jpg
 
-  ApiResource:
+  ApiVersionResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref ImageApi
       ParentId: !GetAtt ImageApi.RootResourceId
+      PathPart: v1
+
+  ApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ImageApi
+      ParentId: !Ref ApiVersionResource
       PathPart: upload
 
-  # POST Method - Image Upload
   PostMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -90,6 +95,7 @@ Resources:
       ResourceId: !Ref ApiResource
       HttpMethod: POST
       AuthorizationType: NONE
+      ApiKeyRequired: true
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
@@ -101,7 +107,6 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
 
-  # CORS - OPTIONS Method
   OptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -112,7 +117,7 @@ Resources:
       Integration:
         Type: MOCK
         RequestTemplates:
-          application/json: "{\"statusCode\": 200}"
+          application/json: '{"statusCode": 200}'
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
@@ -126,7 +131,6 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
-  # Deployment
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -142,12 +146,44 @@ Resources:
       FunctionName: !Ref ImageProcessingLambda
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageApi}/*/POST/upload
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageApi}/*/POST/v1/upload
+
+  # API Key and Usage Plan
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Name: ImageUploadApiKey
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref ImageApi
+          StageName: prod
+
+  UsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: ImageProcessingUsagePlan
+      ApiStages:
+        - ApiId: !Ref ImageApi
+          Stage: prod
+      Throttle:
+        RateLimit: 10
+        BurstLimit: 20
+      Quota:
+        Limit: 1000
+        Period: DAY
+
+  UsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref UsagePlan
 
 Outputs:
   APIInvokeURL:
     Description: "POST image to this endpoint"
-    Value: !Sub
-      - "https://${ApiId}.execute-api.${Region}.amazonaws.com/prod/upload"
-      - ApiId: !Ref ImageApi
-        Region: !Ref AWS::Region
+    Value: !Sub "https://${ImageApi}.execute-api.${AWS::Region}.amazonaws.com/prod/v1/upload"
+
+  ApiKeyValue:
+    Description: "Your API Key for client-side calls"
+    Value: !Ref ApiKey
