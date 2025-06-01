@@ -3,7 +3,7 @@
 set -e
 
 STACK_NAME="ImageUploadStack"
-TEMPLATE_FILE="../cloudformation.yaml"  # Use relative path based on where script runs
+TEMPLATE_FILE="../cloudformation.yaml"   # Adjusted path
 AWS_REGION="us-east-1"
 
 echo "Deploying CloudFormation stack: $STACK_NAME"
