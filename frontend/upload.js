@@ -1,3 +1,5 @@
+const API_URL = "API_URL_PLACEHOLDER";
+
 async function uploadImage() {
   const input = document.getElementById('imageInput');
   const file = input.files[0];
@@ -12,7 +14,7 @@ async function uploadImage() {
   formData.append("file", file); // must match Lambda's field name
 
   try {
-    const response = await fetch("https://n1h925nizj.execute-api.us-east-1.amazonaws.com/prod", {
+    const response = await fetch(API_URL, {
       method: "POST",
       body: formData,
     });
