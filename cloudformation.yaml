@@ -3,7 +3,7 @@ Description: Secure Image Processing App with S3, Lambda, API Gateway, CORS, Ver
 
 Resources:
 
-  # Buckets
+  # S3 Buckets
   OriginalImagesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -138,7 +138,14 @@ Resources:
       - OptionsMethod
     Properties:
       RestApiId: !Ref ImageApi
+      Description: Initial deployment
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
       StageName: prod
+      RestApiId: !Ref ImageApi
+      DeploymentId: !Ref ApiDeployment
 
   LambdaPermission:
     Type: AWS::Lambda::Permission
@@ -151,13 +158,12 @@ Resources:
   # API Key and Usage Plan
   ApiKey:
     Type: AWS::ApiGateway::ApiKey
-    DependsOn: ApiDeployment  # <== Important fix
     Properties:
       Name: ImageUploadApiKey
       Enabled: true
       StageKeys:
         - RestApiId: !Ref ImageApi
-          StageName: prod
+          StageName: !Ref ApiStage
 
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
@@ -165,7 +171,7 @@ Resources:
       UsagePlanName: ImageProcessingUsagePlan
       ApiStages:
         - ApiId: !Ref ImageApi
-          Stage: prod
+          Stage: !Ref ApiStage
       Throttle:
         RateLimit: 10
         BurstLimit: 20
@@ -175,9 +181,6 @@ Resources:
 
   UsagePlanKey:
     Type: AWS::ApiGateway::UsagePlanKey
-    DependsOn:
-      - ApiKey
-      - UsagePlan
     Properties:
       KeyId: !Ref ApiKey
       KeyType: API_KEY
