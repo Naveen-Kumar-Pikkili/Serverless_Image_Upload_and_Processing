@@ -1,28 +1,41 @@
 #!/bin/bash
-set -e
 
-STACK_NAME=${CF_STACK_NAME:-"ImageUploadStack"}
-TEMPLATE_FILE=${CF_TEMPLATE_FILE:-"cloudformation.yaml"}
-AWS_REGION=${AWS_REGION:-"us-east-1"}
+set -euo pipefail
+
+STACK_NAME="ImageUploadStack"
+TEMPLATE_FILE="cloudformation.yaml"
+AWS_REGION="us-east-1"
 
 echo "Deploying CloudFormation stack: $STACK_NAME"
 echo "Using template file: $TEMPLATE_FILE"
 echo "AWS Region: $AWS_REGION"
 
-# Deploy the stack
-DEPLOY_OUTPUT=$(aws cloudformation deploy \
-    --stack-name "$STACK_NAME" \
-    --template-file "$TEMPLATE_FILE" \
-    --region "$AWS_REGION" \
-    --capabilities CAPABILITY_NAMED_IAM 2>&1)
+# Check if the stack exists
+if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" > /dev/null 2>&1; then
+    echo "✅ Stack exists. Attempting to update it..."
 
-echo "$DEPLOY_OUTPUT"
+    UPDATE_OUTPUT=$(aws cloudformation deploy \
+        --stack-name "$STACK_NAME" \
+        --template-file "$TEMPLATE_FILE" \
+        --region "$AWS_REGION" \
+        --capabilities CAPABILITY_NAMED_IAM 2>&1)
 
-# Check output for update or no change message
-if echo "$DEPLOY_OUTPUT" | grep -q "No updates are to be performed"; then
-    echo "✅ No changes detected - stack is up to date."
-elif echo "$DEPLOY_OUTPUT" | grep -q "Successfully created/updated stack"; then
-    echo "✅ Stack created or updated successfully."
+    echo "$UPDATE_OUTPUT"
+
+    if echo "$UPDATE_OUTPUT" | grep -q "No changes to deploy"; then
+        echo "✅ No updates are to be performed."
+    else
+        echo "✅ Stack updated successfully."
+    fi
 else
-    echo "⚠️ Deployment output did not match expected patterns."
+    echo "🚀 Stack does not exist. Creating a new stack..."
+
+    CREATE_OUTPUT=$(aws cloudformation deploy \
+        --stack-name "$STACK_NAME" \
+        --template-file "$TEMPLATE_FILE" \
+        --region "$AWS_REGION" \
+        --capabilities CAPABILITY_NAMED_IAM 2>&1)
+
+    echo "$CREATE_OUTPUT"
+    echo "✅ Stack created successfully."
 fi
