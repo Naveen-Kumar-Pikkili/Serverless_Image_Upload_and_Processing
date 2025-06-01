@@ -1,48 +1,63 @@
 #!/bin/bash
-set -euo pipefail
 
-STACK_NAME="ImageUploadStack"
+STACK_NAME=ImageUploadStack
 TEMPLATE_FILE="../cloudformation.yaml"
-AWS_REGION="us-east-1"
+REGION="us-east-1"
 
 echo "Deploying CloudFormation stack: $STACK_NAME"
 echo "Using template file: $TEMPLATE_FILE"
-echo "AWS Region: $AWS_REGION"
+echo "AWS Region: $REGION"
 
-if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+# Check if stack exists
+STACK_EXISTS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" 2>/dev/null)
+
+if [ $? -ne 0 ]; then
     echo "❌ Stack does not exist. Creating stack..."
     aws cloudformation create-stack \
         --stack-name "$STACK_NAME" \
         --template-body file://"$TEMPLATE_FILE" \
         --capabilities CAPABILITY_NAMED_IAM \
-        --region "$AWS_REGION"
+        --region "$REGION"
 
     echo "Waiting for stack creation to complete..."
-    aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --region "$AWS_REGION"
-    echo "✅ Stack created successfully."
+    aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --region "$REGION"
+    echo "✅ Stack creation complete!"
 else
-    echo "✅ Stack exists. Attempting to update it..."
-    set +e
-    UPDATE_OUTPUT=$(aws cloudformation update-stack \
+    # Check the current status
+    STACK_STATUS=$(aws cloudformation describe-stacks \
         --stack-name "$STACK_NAME" \
-        --template-body file://"$TEMPLATE_FILE" \
-        --capabilities CAPABILITY_NAMED_IAM \
-        --region "$AWS_REGION" 2>&1)
-    UPDATE_EXIT_CODE=$?
-    set -e
+        --region "$REGION" \
+        --query "Stacks[0].StackStatus" \
+        --output text)
 
-    if [[ $UPDATE_EXIT_CODE -ne 0 ]]; then
-        if echo "$UPDATE_OUTPUT" | grep -q 'No updates are to be performed'; then
-            echo "ℹ️ No updates to perform on the stack."
-            exit 0
-        else
-            echo "❌ Stack update failed:"
-            echo "$UPDATE_OUTPUT"
-            exit $UPDATE_EXIT_CODE
-        fi
+    echo "✅ Stack exists. Current status: $STACK_STATUS"
+
+    if [ "$STACK_STATUS" == "ROLLBACK_COMPLETE" ]; then
+        echo "⚠️  Stack is in ROLLBACK_COMPLETE state. Deleting it..."
+        aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$REGION"
+        echo "Waiting for stack to be deleted..."
+        aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --region "$REGION"
+        echo "🧹 Stack deleted. Recreating..."
+
+        aws cloudformation create-stack \
+            --stack-name "$STACK_NAME" \
+            --template-body file://"$TEMPLATE_FILE" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region "$REGION"
+        
+        echo "Waiting for stack creation to complete..."
+        aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --region "$REGION"
+        echo "✅ Stack recreated successfully!"
+    else
+        echo "📦 Attempting to update the stack..."
+        aws cloudformation update-stack \
+            --stack-name "$STACK_NAME" \
+            --template-body file://"$TEMPLATE_FILE" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region "$REGION"
+
+        echo "Waiting for stack update to complete..."
+        aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME" --region "$REGION"
+        echo "✅ Stack update complete!"
     fi
-
-    echo "Waiting for stack update to complete..."
-    aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME" --region "$AWS_REGION"
-    echo "✅ Stack updated successfully."
 fi
