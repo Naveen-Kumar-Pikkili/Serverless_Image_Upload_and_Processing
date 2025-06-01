@@ -5,19 +5,23 @@ import io
 from PIL import Image, ImageOps
 import boto3
 
-# S3 clients and bucket names
 s3 = boto3.client('s3')
-SOURCE_BUCKET_NAME = 'naveen-original-uploaded-images-vpikkili'      # Original bucket
-PROCESSED_BUCKET_NAME = 'naveen-processed-images-vpikkili'           # Bucket for processed images
+SOURCE_BUCKET_NAME = 'naveen-original-uploaded-images-vpikkili'
+PROCESSED_BUCKET_NAME = 'naveen-processed-images-vpikkili'
+
+# Common headers for CORS
+CORS_HEADERS = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+    "Access-Control-Allow-Methods": "POST,OPTIONS"
+}
 
 def respond(status_code, message):
     return {
         "statusCode": status_code,
         "body": json.dumps({"message": message}),
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*"
-        }
+        "headers": CORS_HEADERS
     }
 
 def parse_multipart(body_bytes, content_type):
@@ -52,7 +56,6 @@ def parse_multipart(body_bytes, content_type):
     return None, None
 
 def resize_image(image, max_size=800):
-    # Resize image maintaining aspect ratio so that max dimension is max_size
     width, height = image.size
     if max(width, height) <= max_size:
         return image
@@ -67,9 +70,18 @@ def resize_image(image, max_size=800):
     return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
 def lambda_handler(event, context):
+    # Handle OPTIONS preflight request
+    if event['httpMethod'] == 'OPTIONS':
+        return {
+            "statusCode": 200,
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"message": "CORS preflight check"})
+        }
+
     try:
         is_base64_encoded = event.get('isBase64Encoded', False)
-        content_type = event['headers'].get('Content-Type') or event['headers'].get('content-type')
+        headers = event.get('headers', {})
+        content_type = headers.get('Content-Type') or headers.get('content-type')
 
         if not content_type or 'multipart/form-data' not in content_type:
             return respond(400, "Unsupported Content-Type")
@@ -80,28 +92,20 @@ def lambda_handler(event, context):
         if not file_bytes or not filename:
             return respond(400, "No image file found or file is invalid")
 
-        # Upload original image to SOURCE_BUCKET_NAME
+        # Upload original image to source bucket
         s3.put_object(Bucket=SOURCE_BUCKET_NAME, Key=filename, Body=file_bytes, ContentType='image/jpeg')
 
-        # Open image from bytes
+        # Process image
         image = Image.open(io.BytesIO(file_bytes))
-
-        # Convert to grayscale (black and white)
         bw_image = ImageOps.grayscale(image)
-
-        # *** Removed rotation here ***
-
-        # Resize image to max 800 pixels width/height
         resized_image = resize_image(bw_image, max_size=800)
 
-        # Save processed image to bytes buffer
         buffer = io.BytesIO()
-        # Save as JPEG regardless of original format for consistency
         resized_image.save(buffer, format='JPEG')
         buffer.seek(0)
         processed_bytes = buffer.read()
 
-        # Upload processed image to the processed bucket
+        # Upload processed image
         s3.put_object(Bucket=PROCESSED_BUCKET_NAME, Key=filename, Body=processed_bytes, ContentType='image/jpeg')
 
         return respond(200, f"Successfully uploaded original and processed image '{filename}' to S3 buckets")
