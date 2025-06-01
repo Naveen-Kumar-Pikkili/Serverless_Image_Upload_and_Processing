@@ -98,7 +98,7 @@ Resources:
       ResourceId: !Ref ApiResource
       HttpMethod: POST
       AuthorizationType: NONE
-      ApiKeyRequired: true
+      ApiKeyRequired: false
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
