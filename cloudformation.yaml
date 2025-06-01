@@ -54,7 +54,7 @@ Resources:
   ImageProcessingLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: image-processing-function
+      FunctionName: image-processing-function-vpikkili
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Runtime: python3.9
