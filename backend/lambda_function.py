@@ -7,8 +7,8 @@ import boto3
 
 # S3 clients and bucket names
 s3 = boto3.client('s3')
-SOURCE_BUCKET_NAME = 'naveen-original-uploaded-images'      # Original bucket
-PROCESSED_BUCKET_NAME = 'naveen-processed-images'           # Bucket for processed images
+SOURCE_BUCKET_NAME = 'naveen-original-uploaded-images-vpikkili'      # Original bucket
+PROCESSED_BUCKET_NAME = 'naveen-processed-images-vpikkili'           # Bucket for processed images
 
 def respond(status_code, message):
     return {
