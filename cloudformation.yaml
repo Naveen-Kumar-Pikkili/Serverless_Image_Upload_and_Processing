@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Secure Image Processing App with S3, Lambda, API Gateway, CORS, Versioning, Throttling, and API Key
+Description: Secure Image Processing App with S3, Lambda, API Gateway, CORS, Versioning, Throttling
 
 Resources:
 
@@ -45,7 +45,7 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-  # Lambda Function (Placeholder code)
+  # Lambda Function
   ImageProcessingLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -90,7 +90,7 @@ Resources:
       ParentId: !Ref ApiVersionResource
       PathPart: upload
 
-  # POST Method with binary content handling
+  # POST Method
   PostMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -111,7 +111,7 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
 
-  # OPTIONS Method for CORS preflight
+  # OPTIONS Method (CORS Preflight)
   OptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -126,7 +126,7 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Amz-Security-Token'"
               method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
               method.response.header.Access-Control-Allow-Origin: "'*'"
       MethodResponses:
@@ -153,7 +153,7 @@ Resources:
       RestApiId: !Ref ImageApi
       DeploymentId: !Ref ApiDeployment
 
-  # Lambda permission for API Gateway to invoke the Lambda
+  # Lambda Permission for API Gateway
   LambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -162,42 +162,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageApi}/*/POST/v1/upload
 
-  # API Key and Usage Plan
-  ApiKey:
-    Type: AWS::ApiGateway::ApiKey
-    Properties:
-      Name: ImageUploadApiKey
-      Enabled: true
-      StageKeys:
-        - RestApiId: !Ref ImageApi
-          StageName: !Ref ApiStage
-
-  UsagePlan:
-    Type: AWS::ApiGateway::UsagePlan
-    Properties:
-      UsagePlanName: ImageProcessingUsagePlan
-      ApiStages:
-        - ApiId: !Ref ImageApi
-          Stage: !Ref ApiStage
-      Throttle:
-        RateLimit: 10
-        BurstLimit: 20
-      Quota:
-        Limit: 1000
-        Period: DAY
-
-  UsagePlanKey:
-    Type: AWS::ApiGateway::UsagePlanKey
-    Properties:
-      KeyId: !Ref ApiKey
-      KeyType: API_KEY
-      UsagePlanId: !Ref UsagePlan
-
 Outputs:
   APIInvokeURL:
     Description: "POST image to this endpoint"
     Value: !Sub "https://${ImageApi}.execute-api.${AWS::Region}.amazonaws.com/prod/v1/upload"
-
-  ApiKeyValue:
-    Description: "Your API Key for client-side calls"
-    Value: !Ref ApiKey
