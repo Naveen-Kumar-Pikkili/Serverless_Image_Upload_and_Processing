@@ -1,4 +1,5 @@
 const API_URL = "API_URL_PLACEHOLDER";
+const API_KEY = "API_KEY_PLACEHOLDER";
 
 async function uploadImage() {
   const input = document.getElementById('imageInput');
