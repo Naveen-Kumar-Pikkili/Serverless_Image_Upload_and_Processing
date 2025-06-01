@@ -12,7 +12,7 @@ async function uploadImage() {
   formData.append("file", file); // must match Lambda's field name
 
   try {
-    const response = await fetch("https://solfnn8vw2.execute-api.us-east-1.amazonaws.com/prod/upload", {
+    const response = await fetch("https://n1h925nizj.execute-api.us-east-1.amazonaws.com/prod", {
       method: "POST",
       body: formData,
     });
