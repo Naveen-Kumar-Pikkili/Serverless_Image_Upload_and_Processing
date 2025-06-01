@@ -73,6 +73,7 @@ Resources:
         - image/jpeg
         - image/png
         - image/jpg
+        - multipart/form-data
 
   ApiVersionResource:
     Type: AWS::ApiGateway::Resource
